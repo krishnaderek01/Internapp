@@ -1,0 +1,8 @@
+{
+  "name": "MedIntern CL - Asistente para Internos de Medicina",
+  "description": "Una herramienta integral para internos y residentes de medicina en Chile que permite digitalizar fichas clínicas, gestionar un vademécum personal, biblioteca de patologías y análisis inteligente de datos mediante IA.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
