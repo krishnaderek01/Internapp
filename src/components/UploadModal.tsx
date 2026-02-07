@@ -3,7 +3,7 @@
 import React, { useState, useRef } from 'react';
 import Tesseract from 'tesseract.js';
 import { Loader2, Camera, FileUp, Sparkles } from 'lucide-react';
-import { GoogleGenerativeAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 interface UploadModalProps {
   onClose: () => void;
