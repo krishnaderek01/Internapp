@@ -1,3 +1,4 @@
+"use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppTab, PatientCase, Medication, Pathology, MedicationVariation } from './types';
@@ -72,7 +73,6 @@ const App: React.FC = () => {
         if (!alreadyHasVar) {
           targetList.push(variation);
         }
-        // Update family info if missing
         if (!med.family) med.family = medInfo.family || 'Otros';
         if (!med.subfamily) med.subfamily = medInfo.subfamily;
       } else {
