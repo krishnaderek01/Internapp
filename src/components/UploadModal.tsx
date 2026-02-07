@@ -2,7 +2,8 @@
 
 import React, { useState, useRef } from 'react';
 import Tesseract from 'tesseract.js';
-import { Loader2, Camera, FileUp } from 'lucide-react';
+import { Loader2, Camera, FileUp, Sparkles } from 'lucide-react';
+import { GoogleGenerativeAI } from "@google/genai";
 
 interface UploadModalProps {
   onClose: () => void;
@@ -12,8 +13,54 @@ interface UploadModalProps {
 const UploadModal: React.FC<UploadModalProps> = ({ onClose, onSuccess }) => {
   const [name, setName] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
+  const [notes, setNotes] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isAiCleaning, setIsAiCleaning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const cleanTextWithAI = async (rawText: string) => {
+    setIsAiCleaning(true);
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        console.warn("GEMINI_API_KEY no encontrada. Usando mapeo básico.");
+        return;
+      }
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const prompt = `Act as a medical scribe. Correct and structure this messy OCR text from a clinical document.
+      Return ONLY a JSON object with the following structure:
+      {
+        "patientName": "string",
+        "diagnosis": ["string"],
+        "medications": [{"name": "string", "dose": "string"}],
+        "evolution": "string",
+        "notes": "string"
+      }
+      
+      Messy OCR text:
+      ${rawText}`;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      // Extract JSON from response (handling potential markdown blocks)
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const data = JSON.parse(jsonMatch[0]);
+        setName(data.patientName || '');
+        setDiagnosis(data.diagnosis?.join(', ') || '');
+        setNotes(data.evolution || data.notes || '');
+      }
+    } catch (error) {
+      console.error("AI Cleaning Error:", error);
+    } finally {
+      setIsAiCleaning(false);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -23,10 +70,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onSuccess }) => {
     try {
       if (file.type.startsWith('image/')) {
         const { data: { text } } = await Tesseract.recognize(file, 'spa');
-        processExtractedText(text);
+        await cleanTextWithAI(text);
       } else {
-        // For PDF/Docx, we'd need more complex parsing, but for now we notify
-        alert("El procesamiento de PDF/Docx requiere integración adicional. Por ahora, usa imágenes o fotos.");
+        alert("Por ahora, usa imágenes o fotos para el procesamiento con IA.");
       }
     } catch (error) {
       console.error("OCR Error:", error);
@@ -36,26 +82,13 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onSuccess }) => {
     }
   };
 
-  const processExtractedText = (text: string) => {
-    // Simple heuristic mapping
-    const lines = text.split('\n');
-    if (lines.length > 0) {
-      // Try to find a name or diagnosis
-      const possibleName = lines.find(l => l.toLowerCase().includes('nombre') || l.length > 5);
-      if (possibleName) setName(possibleName.replace(/nombre:?/i, '').trim());
-      
-      const possibleDiag = lines.find(l => l.toLowerCase().includes('diag') || l.toLowerCase().includes('cie'));
-      if (possibleDiag) setDiagnosis(possibleDiag.replace(/diagnóstico:?/i, '').trim());
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSuccess({
       patientName: name,
-      diagnosis: diagnosis.split(',').map(d => d.trim()),
+      diagnosis: diagnosis.split(',').map(d => d.trim()).filter(d => d),
       medications: [],
-      notes: 'Caso ingresado mediante OCR/Manual.',
+      notes: notes || 'Caso ingresado mediante OCR e IA.',
       age: 30,
       gender: 'M'
     });
@@ -85,15 +118,17 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onSuccess }) => {
             type="file" 
             ref={fileInputRef} 
             className="hidden" 
-            accept="image/*,.pdf,.docx" 
+            accept="image/*" 
             onChange={handleFileChange}
           />
         </div>
 
-        {isProcessing && (
-          <div className="flex items-center justify-center gap-2 text-blue-600 mb-4">
-            <Loader2 className="animate-spin" size={16} />
-            <span className="text-xs font-bold">Procesando texto con IA...</span>
+        {(isProcessing || isAiCleaning) && (
+          <div className="flex items-center justify-center gap-2 text-blue-600 mb-4 bg-blue-50 p-3 rounded-lg">
+            {isProcessing ? <Loader2 className="animate-spin" size={16} /> : <Sparkles className="animate-pulse" size={16} />}
+            <span className="text-xs font-bold">
+              {isProcessing ? "Leyendo imagen..." : "IA estructurando datos médicos..."}
+            </span>
           </div>
         )}
 
@@ -108,12 +143,20 @@ const UploadModal: React.FC<UploadModalProps> = ({ onClose, onSuccess }) => {
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Diagnósticos (sep. por coma)</label>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Diagnósticos</label>
             <input 
               className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
               value={diagnosis} 
               onChange={e => setDiagnosis(e.target.value)}
               required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Evolución / Notas</label>
+            <textarea 
+              className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none h-20 resize-none" 
+              value={notes} 
+              onChange={e => setNotes(e.target.value)}
             />
           </div>
           <div className="flex gap-2 pt-2">
